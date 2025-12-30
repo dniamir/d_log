@@ -31,6 +31,11 @@ impl DLogger {
     pub fn d_sep() {
         defmt::info!("=======================");
     }
+    #[inline]
+    pub fn d_restart() {
+        defmt::info!("*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*");
+        defmt::info!("*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*");
+    }
 }
 
 #[macro_export]
