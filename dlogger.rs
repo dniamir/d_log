@@ -6,15 +6,16 @@ pub struct DLogger;
 pub static DLOGGER_HOLD_COUNT: AtomicU32 = AtomicU32::new(0);
 
 impl DLogger {
-    #[inline]
+#[inline]
     pub fn hold() {
-        // increment hold count
+        #[cfg(not(feature = "no_hold"))]
         DLOGGER_HOLD_COUNT.fetch_add(1, Ordering::Relaxed);
     }
 
     #[inline]
     pub fn release() {
         // decrement, but don't allow underflow
+        #[cfg(not(feature = "no_hold"))]
         DLOGGER_HOLD_COUNT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |x| {
             if x > 0 { Some(x - 1) } else { Some(0) }
         }).ok();
