@@ -46,3 +46,10 @@ macro_rules! d_info {
         }
     };
 }
+
+#[macro_export]
+macro_rules! d_force {
+    ($($arg:tt)*) => {
+        defmt::info!($($arg)*);
+    };
+}
