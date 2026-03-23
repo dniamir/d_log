@@ -1,32 +1,36 @@
+// d_info! — gated by DLogger::allowed(), indented by hold depth
+//
+//   d_info!("msg")                 — plain message, no args (interned format string)
+//   d_info!(val)                   — single non-literal value: prints "{}" val
+//   d_info!("fmt {}", val)         — format string + int (any defmt format specifier)
+//   d_info!("fmt {}", val, prec)   — format string + float, rounded to `prec` decimal places
 #[macro_export]
 macro_rules! d_info {
-    // f32 branch: d_info!(f: "Temp: {} C", val, 2)
-    (f: $fmt:literal, $val:expr, $prec:expr) => {
+    // Plain literal with no args: d_info!("message")
+    // Must come before ($val:expr) — string literals are expressions and would otherwise
+    // be routed there, causing defmt to serialize them as runtime &str values (triggering
+    // TryFromIntError in defmt's export encoding) instead of interning them as format strings.
+    ($fmt:literal) => {
+        $crate::d_info_internal!($fmt);
+    };
+
+    // Single non-literal value: d_info!(val)
+    ($val:expr) => {
+        $crate::d_info_internal!("{}", $val);
+    };
+
+    // Float with precision: d_info!("label: {}", float_val, decimal_places)
+    // Must come before the general fallback to avoid ambiguity on 3-token calls.
+    ($fmt:literal, $val:expr, $prec:expr) => {
         $crate::d_info_internal!($fmt, $crate::d_log::dlogger_common::DFmtF32 {
             value: $val as f32,
-            precision: $prec,
+            precision: $prec as usize,
         });
     };
 
-    // Signed integer branch (i32/i16): d_info!(i: "Temp: {} °C", val, 2)
-    (i: $fmt:literal, $val:expr, $prec:expr) => {
-        $crate::d_info_internal!($fmt, $crate::d_log::dlogger_common::DFmtI32 {
-            value: $val as i32,
-            precision: $prec,
-        });
-    };
-
-    // Unsigned integer branch (u32/u16): d_info!(u: "Humidity: {} %", val, 2)
-    (u: $fmt:literal, $val:expr, $prec:expr) => {
-        $crate::d_info_internal!($fmt, $crate::d_log::dlogger_common::DFmtU32 {
-            value: $val as u32,
-            precision: $prec,
-        });
-    };
-
-    // Standard fallback: This now safely handles any number of arguments
-    ($($arg:tt)*) => {
-        $crate::d_info_internal!($($arg)*);
+    // Format string + int(s), any defmt specifier: d_info!("label: {}", val)
+    ($fmt:literal, $($arg:tt)*) => {
+        $crate::d_info_internal!($fmt, $($arg)*);
     };
 }
 
@@ -63,42 +67,34 @@ macro_rules! d_info_internal {
     };
 }
 
+// d_force! — bypasses DLogger::allowed(), always logs
+//
+//   d_force!("msg")                — plain message, no args
+//   d_force!(val)                  — single non-literal value
+//   d_force!("fmt {}", val)        — format string + int
+//   d_force!("fmt {}", val, prec)  — format string + float with precision
 #[macro_export]
 macro_rules! d_force {
-    // f32 branch: d_force!(f: "CRITICAL Temp: {} C", val, 2)
-    (f: $fmt:literal, $val:expr, $prec:expr) => {
-        $crate::d_force_internal!($fmt, $crate::d_log::dlogger_common::DFmtF32 {
+    // Plain literal with no args — same fix as d_info!
+    ($fmt:literal) => {
+        defmt::info!($fmt);
+    };
+
+    // Single non-literal value
+    ($val:expr) => {
+        defmt::info!("{}", $val);
+    };
+
+    // Float with precision: d_force!("label: {}", float_val, decimal_places)
+    ($fmt:literal, $val:expr, $prec:expr) => {
+        defmt::info!($fmt, $crate::d_log::dlogger_common::DFmtF32 {
             value: $val as f32,
-            precision: $prec,
+            precision: $prec as usize,
         });
     };
 
-    // Signed integer branch: d_force!(i: "msg: {}", val, 2)
-    (i: $fmt:literal, $val:expr, $prec:expr) => {
-        $crate::d_force_internal!($fmt, $crate::d_log::dlogger_common::DFmtI32 {
-            value: $val as i32,
-            precision: $prec,
-        });
-    };
-
-    // Unsigned integer branch: d_force!(u: "msg: {}", val, 2)
-    (u: $fmt:literal, $val:expr, $prec:expr) => {
-        $crate::d_force_internal!($fmt, $crate::d_log::dlogger_common::DFmtU32 {
-            value: $val as u32,
-            precision: $prec,
-        });
-    };
-
-    // 2. Standard fallback for forced logs
-    ($($arg:tt)*) => {
-        $crate::d_force_internal!($($arg)*);
-    };
-}
-
-#[macro_export]
-macro_rules! d_force_internal {
-    ($($arg:tt)*) => {
-        // Skips the DLogger::allowed() check entirely
-        defmt::info!($($arg)*);
+    // Format string + int(s), any defmt specifier
+    ($fmt:literal, $($arg:tt)*) => {
+        defmt::info!($fmt, $($arg)*);
     };
 }
