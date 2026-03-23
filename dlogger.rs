@@ -67,7 +67,9 @@ impl DLogger {
             if x > 0 { Some(x - 1) } else { Some(0) }
         }).ok();
     }
+    #[inline] pub fn set_hold(count: usize) { DLOGGER_HOLD_COUNT.store(count as u32, Ordering::Relaxed); }
     #[inline] pub fn get_hold_count() -> usize { DLOGGER_HOLD_COUNT.load(Ordering::Relaxed) as usize }
+    #[inline] pub fn reset_hold() { DLOGGER_HOLD_COUNT.store(0u32, Ordering::Relaxed); }
     #[inline] pub fn allowed() -> bool {
         #[cfg(feature = "no_hold")] { true }
         #[cfg(not(feature = "no_hold"))] { DLOGGER_HOLD_COUNT.load(Ordering::Relaxed) == 0 }
