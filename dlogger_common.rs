@@ -1,6 +1,9 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
+// Hold counts packed as 4-bit nibbles: bits [task_id*4 .. task_id*4+3].
+// Supports up to 8 task IDs (0–7), each with a hold depth of 0–15.
 pub static DLOGGER_HOLD_COUNT: AtomicU32 = AtomicU32::new(0);
+pub static ACTIVE_TASK_ID: AtomicU32 = AtomicU32::new(0);
 
 pub struct DLogger;
 
@@ -43,19 +46,60 @@ impl defmt::Format for DFmtF32 {
 }
 
 impl DLogger {
-    #[inline] pub fn hold() { DLOGGER_HOLD_COUNT.fetch_add(1, Ordering::Relaxed); }
-    #[inline] pub fn release() {
-        DLOGGER_HOLD_COUNT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |x| {
-            if x > 0 { Some(x - 1) } else { Some(0) }
+    // Returns the bit shift for the current task's 4-bit nibble.
+    #[inline] fn shift() -> u32 { ACTIVE_TASK_ID.load(Ordering::Relaxed) * 4 }
+
+    // Increment the current task's hold depth (saturates at 15).
+    #[inline] pub fn hold() {
+        let shift = Self::shift();
+        let mask = 0xFu32 << shift;
+        DLOGGER_HOLD_COUNT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+            let nibble = (v >> shift) & 0xF;
+            Some(if nibble < 0xF { (v & !mask) | ((nibble + 1) << shift) } else { v })
         }).ok();
     }
-    #[inline] pub fn set_hold(count: usize) { DLOGGER_HOLD_COUNT.store(count as u32, Ordering::Relaxed); }
-    #[inline] pub fn get_hold_count() -> usize { DLOGGER_HOLD_COUNT.load(Ordering::Relaxed) as usize }
-    #[inline] pub fn reset_hold() { DLOGGER_HOLD_COUNT.store(0u32, Ordering::Relaxed); }
+
+    // Decrement the current task's hold depth (floors at 0).
+    #[inline] pub fn release() {
+        let shift = Self::shift();
+        let mask = 0xFu32 << shift;
+        DLOGGER_HOLD_COUNT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+            let nibble = (v >> shift) & 0xF;
+            Some(if nibble > 0 { (v & !mask) | ((nibble - 1) << shift) } else { v })
+        }).ok();
+    }
+
+    // Set the current task's hold depth to an explicit value (capped at 15).
+    #[inline] pub fn set_hold(count: usize) {
+        let shift = Self::shift();
+        let mask = 0xFu32 << shift;
+        let nibble = (count as u32).min(0xF);
+        DLOGGER_HOLD_COUNT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+            Some((v & !mask) | (nibble << shift))
+        }).ok();
+    }
+
+    // Read the current task's hold depth (0–15).
+    #[inline] pub fn get_hold_count() -> usize {
+        let shift = Self::shift();
+        ((DLOGGER_HOLD_COUNT.load(Ordering::Relaxed) >> shift) & 0xF) as usize
+    }
+
+    // Clear the current task's hold depth to 0.
+    #[inline] pub fn reset_hold() {
+        let shift = Self::shift();
+        DLOGGER_HOLD_COUNT.fetch_and(!(0xFu32 << shift), Ordering::Relaxed);
+    }
+
+    // True when the current task's hold depth is 0.
     #[inline] pub fn allowed() -> bool {
         #[cfg(feature = "no_hold")] { true }
-        #[cfg(not(feature = "no_hold"))] { DLOGGER_HOLD_COUNT.load(Ordering::Relaxed) == 0 }
+        #[cfg(not(feature = "no_hold"))] {
+            let shift = Self::shift();
+            (DLOGGER_HOLD_COUNT.load(Ordering::Relaxed) >> shift) & 0xF == 0
+        }
     }
+
     #[inline] pub fn d_sep() { defmt::info!("======================="); }
     #[inline] pub fn d_restart() {
         defmt::info!("*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*");
