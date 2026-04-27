@@ -30,7 +30,7 @@ macro_rules! d_info {
 
     // Format string + int(s), any defmt specifier: d_info!("label: {}", val)
     ($fmt:literal, $($arg:tt)*) => {
-        $crate::d_info_internal!($fmt, $($arg)*);
+        $crate::d_info_internal!($fmt, $($arg)*)
     };
 }
 
@@ -77,7 +77,7 @@ macro_rules! d_info_internal {
 macro_rules! d_force {
     // Plain literal with no args — same fix as d_info!
     ($fmt:literal) => {
-        defmt::info!($fmt);
+        defmt::info!($fmt)
     };
 
     // Single non-literal value
